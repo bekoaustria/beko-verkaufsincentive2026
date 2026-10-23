@@ -1,0 +1,7 @@
+# Daten mit Kontakten, Verträgen und Testdaten – nie ins Repository
+incentive-daten.json
+*.daten.json
+.dev.vars
+.wrangler/
+node_modules/
+.DS_Store
