@@ -5,3 +5,6 @@ incentive-daten.json
 .wrangler/
 node_modules/
 .DS_Store
+*.xlsx
+*.csv
+Mailingliste*
