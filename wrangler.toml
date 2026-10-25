@@ -1,5 +1,5 @@
 # Cloudflare Worker – Beko Verkaufs-Challenge 2026 · Race to Turkey (Verkäufer:innen Incentive)
-name = "bekoaustria-vk-wettbewerb"
+name = "verkaeuferinnen-incentive"
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
 workers_dev = true
