@@ -10,11 +10,11 @@ keep_vars = true
 [[d1_databases]]
 binding = "DB"
 database_name = "incentive-db"
-database_id = "HIER-D1-ID-EINTRAGEN"
+database_id = "93c4dfc1-3f64-49d1-9a12-1e4645ed041e"
 
 [[kv_namespaces]]
 binding = "FILES"
-id = "HIER-KV-ID-EINTRAGEN"
+id = "d915389afa28452bb34a15f5c7fe3ee6"
 
 # Optional statt im Dashboard:
 # [vars]
