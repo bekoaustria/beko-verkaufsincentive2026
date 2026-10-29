@@ -1,0 +1,60 @@
+DATENSCHUTZ-PAKET FÜR CLOUDFLARE PAGES – Beko Austria AG
+Stand 29.10.2026 · Fassung zur Prüfung durch die Rechtsabteilung
+
+INHALT
+  datenschutz.js     Datenschutzerklärung, Cookie-Richtlinie, Cookie-Einstellungen, Impressum
+                     (Fenster + Hinweisleiste + Links in der Fußzeile, baut sich selbst ein)
+  datenschutz.html   eigene Seite: /datenschutz.html (#datenschutz, #cookies, #impressum)
+  fonts/             29 Schriftdateien + fonts.css – ersetzt Google Fonts (keine IP-Weitergabe an Google)
+  einbauen.py        baut das Paket automatisch in einen entpackten App-Ordner ein
+
+FÜR WELCHE PROJEKTE
+  elektrabregenzaustriafhapp   (zuletzt 57 Dateien → danach 89)
+  bekoaustriafhapp             (zuletzt 51 Dateien → danach 83)
+  indesitaustriafhapp          (zuletzt 34 Dateien → danach 66)
+  beko-austria-ag (DACH)       (+32 Dateien)
+  Verkäufer:innen-Incentive    (+32 Dateien)
+
+WICHTIG
+  - Immer vom aktuellen, vollständigen Cloudflare-Paket ausgehen (Stand 28.10.2026).
+    KEINE Dateien aus der claude.ai-Vorschau verwenden – siehe Anleitung „Updates der Fachhandels-Apps“.
+  - Immer den GANZEN Ordner hochladen, nie einzelne Dateien.
+  - _worker.js, _routes.json, sw.js, registrierung/config.json werden nicht verändert.
+  - Es kommt keine _headers-Datei dazu.
+
+VARIANTE A – AUTOMATISCH (empfohlen)
+  1. Aktuelles ZIP der App entpacken.
+  2. Im Ordner dieses Pakets ausführen:
+       python3 einbauen.py <Pfad>/bekoaustriafhapp
+  3. Ausgabe prüfen: „Dateien vorher/nachher“ muss um 32 steigen.
+  4. Cloudflare → Workers & Pages → Projekt → Create deployment → Production
+     → den ganzen Ordner hineinziehen → Save and Deploy.
+  5. Für jedes weitere Projekt wiederholen.
+
+VARIANTE B – VON HAND
+  1. datenschutz.js, datenschutz.html und den Ordner fonts/ in den App-Ordner kopieren
+     (neben index.html).
+  2. In index.html, minisite.html, minisite-konfigurator.html, projekte.html, pruefung.html
+     und allen anderen .html-Seiten direkt vor </body> einfügen:
+       <script src="/datenschutz.js" defer></script>
+  3. Im <head> die Zeilen mit fonts.googleapis.com / fonts.gstatic.com löschen
+     (link rel="preconnect" und link href="https://fonts.googleapis.com/css2?...") und stattdessen:
+       <link rel="stylesheet" href="/fonts/fonts.css">
+  4. Ganzen Ordner hochladen (siehe A, Schritt 4).
+
+NACH DEM DEPLOY PRÜFEN
+  - https://<projekt>.pages.dev/datenschutz.js lädt (kein 404).
+  - https://<projekt>.pages.dev/datenschutz.html zeigt die Erklärung.
+  - In der App: Hinweisleiste unten beim ersten Aufruf; in der Fußzeile bzw. beim Login
+    „Datenschutz · Cookie-Richtlinie · Cookie-Einstellungen“.
+  - Schriften sehen aus wie vorher. Browser-Entwicklertools → Netzwerk: keine Anfragen an fonts.googleapis.com.
+  - Kataloge, Anmeldung und Registrierung funktionieren wie vorher.
+  - Wer die App installiert hat (Service Worker), sieht die Änderung nach einmal Neuladen.
+
+ZURÜCK AUF DEN VORHERIGEN STAND
+  Cloudflare → Projekt → Deployments → Deployment vom 28.10.2026 → „Rollback to this deployment“.
+
+ANPASSEN
+  Texte stehen in datenschutz.js (Abschnitte Datenschutz / Cookies / Impressum).
+  Nach Freigabe durch die Rechtsabteilung „Fassung zur Prüfung …“ entfernen.
+  Optional vor dem Script: <script>window.BK_LEGAL={accent:'#0a2377',app:'Name der App'}</script>
