@@ -1,5 +1,5 @@
 <!--RACE-INTRO--><style id="rtt-css">
-#rtt{position:fixed;inset:0;z-index:9700;display:none;flex-direction:column;background:#f3f5f8;color:#13213a;font-family:"Public Sans",Inter,Arial,Helvetica,sans-serif;overflow:hidden;opacity:1;transition:opacity .45s ease}
+#rtt{position:fixed;inset:0;z-index:10000;display:none;flex-direction:column;background:#f3f5f8;color:#13213a;font-family:"Public Sans",Inter,Arial,Helvetica,sans-serif;overflow:hidden;opacity:1;transition:opacity .45s ease}
 #rtt.on{display:flex}
 #rtt.out{opacity:0}
 #rtt .rtt-top{flex:none;display:flex;justify-content:flex-end;padding:calc(18px + env(safe-area-inset-top,0px)) clamp(18px,4vw,56px) 0}
@@ -71,8 +71,8 @@ setTimeout(function(){el.classList.remove('on','go','out');document.documentElem
 if(typeof next==='function')next();else if(last&&last.focus)try{last.focus()}catch(e){}},reduced()?0:620);}
 function register(){
 if(typeof cfg.onRegister==='function')return cfg.onRegister();
-if(typeof window.openPanel==='function')return window.openPanel('reg');
 var b=document.getElementById('ctaReg');if(b)return b.click();
+if(typeof window.openPanel==='function')return window.openPanel('reg');
 location.hash='#registrierung';}
 document.getElementById('rtt-reg').onclick=function(){close(register)};
 document.getElementById('rtt-skip').onclick=function(){close()};

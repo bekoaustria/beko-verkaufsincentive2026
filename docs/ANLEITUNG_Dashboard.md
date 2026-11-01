@@ -59,3 +59,10 @@ Alles läuft über das Cloudflare-Dashboard im Browser. Dauer: ca. 15 Minuten.
 | Registrierung | Unter „Mein Bereich → Registrierung“ gibt es die Schaltflächen **Konto erstellen** und **Anmelden**; „Mein Bereich“ aktualisiert sich nach dem Laden automatisch |
 | Prüfung | Wird die Seite ohne Worker geöffnet (als Datei oder über Cloudflare Pages), zeigt „Mein Bereich“ einen klaren Hinweis. Richtig ist immer die Adresse `…workers.dev` |
 | Bestehender Worker | Nur index.html unter /konten neu hochladen. Daten **nicht** erneut importieren, sonst werden angelegte Konten und Registrierungen überschrieben |
+
+## Änderungen (Stand 01.11.2026)
+
+| Thema | Änderung |
+|---|---|
+| Intro | Vorlandingpage „Race to Turkey 2027“, siehe `docs/UPDATE_2026-11-01.md` |
+| Bestehender Worker | Nur `app/index.html` unter /konten neu hochladen. Daten **nicht** erneut importieren |
