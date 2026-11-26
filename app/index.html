@@ -631,9 +631,9 @@ function pReg(B){
   $('#r_emp').addEventListener('change',chkEmp); $('#r_zip').addEventListener('change',chkEmp); chkEmp(); dirBind();
   const conUp=async ev=>{ const fs=[...ev.target.files]; ev.target.value=''; if(!fs.length) return; const st=$('#r_cmsg')||$('#r_cst');
     if(!assets){ toast('Hochladen ist für dich noch nicht freigeschaltet.'); return; }
-    for(const f of fs){ if(!(f.type==='application/pdf'||f.type.startsWith('image/'))){ toast(f.name+': bitte PDF oder Foto.'); continue; } if(f.size>20*1048576){ toast(f.name+': größer als 20 MB.'); continue; }
+    for(const f of fs){ if(!upIsDoc(f)){ toast(f.name+': bitte PDF oder Foto.'); continue; } if(f.size>20*1048576){ toast(f.name+': größer als 20 MB.'); continue; }
       $('#r_cst').insertAdjacentHTML('beforeend','<div class="muted" data-cup>Wird hochgeladen …</div>');
-      try{ const a=await assets.upload(f); PCON=[...(PCON||[]),{id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Foto Seite '+((PCON||[]).length+1),type:a.contentType,ts:new Date().toISOString()}]; }catch(e){ toast('Hochladen nicht möglich: '+(e.message||e.code||'Fehler')); } }
+      try{ const a=await upFile(f); PCON=[...(PCON||[]),{id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Foto Seite '+((PCON||[]).length+1),type:a.contentType,ts:new Date().toISOString()}]; }catch(e){ toast('Hochladen nicht möglich: '+(e.message||e.code||'Fehler')); } }
     conList(); };
   $('#r_con').onchange=e=>{ PSIG=null; conUp(e); }; $('#r_conc').onchange=e=>{ PSIG=null; conUp(e); };
   $('#r_save').onclick=async()=>{
@@ -697,7 +697,7 @@ async function handle(input){ const files=Array.isArray(input)?input:[input]; co
   DRAFT={file, asset:null, att:[], invNo:'', invDate:'', dealer:'', items:[], claims:[], note:'', unknown:[]};
   try{ if(!assets) throw new Error('Upload ist für dich noch nicht freigeschaltet.');
     for(let i=0;i<files.length;i++){ const f=files[i]; st.innerHTML=`<div class="msg inf"><span class="spin"></span> Wird hochgeladen … ${files.length>1?`(${i+1} von ${files.length})`:''}</div>`;
-      const a=await assets.upload(f); const nm=f.name&&f.name!=='image.jpg'?f.name:'Foto '+(i+1);
+      const a=await upFile(f); const nm=f.name&&f.name!=='image.jpg'?f.name:'Foto '+(i+1);
       if(i===0) DRAFT.asset={id:a.id,url:a.url,type:a.contentType,name:nm}; else DRAFT.att.push({id:a.id,url:a.url,name:nm,type:a.contentType}); } }
   catch(e){ st.innerHTML=`<div class="msg err">Hochladen nicht möglich: ${esc(e.message||e.code||'unbekannter Fehler')}</div>`; DRAFT=null; $('#drop').hidden=false; return; }
   let ocrOk=false;
@@ -741,8 +741,8 @@ function renderDraft(){
   $('#d_add').onclick=()=>{ D.items.push({m:'',q:1}); renderDraft(); };
   ['d_no','d_date','d_dealer'].forEach(id=>$('#'+id).oninput=e=>{ D[{d_no:'invNo',d_date:'invDate',d_dealer:'dealer'}[id]]=e.target.value.trim(); });
   const upAtt=async fs=>{ const st=$('#d_attst'); if(!assets){ st.textContent='Hochladen ist für dich noch nicht freigeschaltet.'; return; }
-    for(const f of fs){ if(!(f.type==='application/pdf'||f.type.startsWith('image/'))){ st.textContent=f.name+': nur PDF oder Foto.'; continue; } if(f.size>20*1048576){ st.textContent=f.name+': größer als 20 MB.'; continue; }
-      st.innerHTML='<span class="spin"></span> Wird hochgeladen …'; try{ const a=await assets.upload(f); D.att=[...(D.att||[]),{id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Foto '+((D.att||[]).length+1),type:a.contentType}]; }catch(e){ st.textContent='Hochladen nicht möglich: '+(e.message||e.code||'Fehler'); return; } }
+    for(const f of fs){ if(!upIsDoc(f)){ st.textContent=f.name+': nur PDF oder Foto.'; continue; } if(f.size>20*1048576){ st.textContent=f.name+': größer als 20 MB.'; continue; }
+      st.innerHTML='<span class="spin"></span> Wird hochgeladen …'; try{ const a=await upFile(f); D.att=[...(D.att||[]),{id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Foto '+((D.att||[]).length+1),type:a.contentType}]; }catch(e){ st.textContent='Hochladen nicht möglich: '+(e.message||e.code||'Fehler'); return; } }
     renderDraft(); };
   ['d_att','d_attc'].forEach(id=>$('#'+id).onchange=e=>{ const fs=[...e.target.files]; e.target.value=''; if(fs.length) upAtt(fs); });
   F.querySelectorAll('[data-attx]').forEach(b=>b.onclick=()=>{ D.att.splice(+b.dataset.attx,1); renderDraft(); });
@@ -1103,12 +1103,27 @@ function sigForm(box,o){ const g=o.role, v=o.v, me=`sg${g}`;
     const sig={n,f:q('f').value.trim(),od:q('od').value.trim(),ts:new Date().toISOString(),by:uid||'',png:pad.png()};
     q('ok').disabled=true; msg('<span class="spin"></span> Vertrag wird unterzeichnet …','inf');
     try{ await o.onDone(sig); }catch(e){ q('ok').disabled=false; msg(esc(e.message||'Unterzeichnen nicht möglich.')); } }; }
-async function upBlob(blob,name){ if(!assets) throw new Error('Hochladen ist für dich noch nicht freigeschaltet.'); const a=await assets.upload(new File([blob],name,{type:blob.type})); return {id:a.id,url:a.url,name,type:a.contentType||blob.type}; }
+const UPT={pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',jfif:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',mp4:'video/mp4',webm:'video/webm'};
+const UPOK=new Set(Object.values(UPT));
+function upKind(f){ const ext=String(f&&f.name||'').split('.').pop().toLowerCase(); let t=String(f&&f.type||'').split(';')[0].trim().toLowerCase();
+  if(!t||t==='application/octet-stream'||/^(application\/(x-pdf|acrobat|vnd\.pdf|x-bzpdf|x-gzpdf)|applications\/vnd\.pdf|text\/(pdf|x-pdf))$/.test(t)) t=UPT[ext]||t;
+  if(t==='image/jpg'||t==='image/pjpeg') t='image/jpeg'; return {t,ext}; }
+function upIsDoc(f){ const k=upKind(f); return k.t==='application/pdf'||k.t.startsWith('image/')||/^(heic|heif|tif|tiff|bmp)$/.test(k.ext); }
+async function toJpeg(f){ try{ const bm=await createImageBitmap(f); const sc=Math.min(1,2400/Math.max(bm.width,bm.height)); const c=document.createElement('canvas'); c.width=Math.round(bm.width*sc); c.height=Math.round(bm.height*sc); c.getContext('2d').drawImage(bm,0,0,c.width,c.height); const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.88)); return b?new File([b],String(f.name||'Foto').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'}):null; }catch(e){ return null; } }
+function upErr(e){ const c=e&&e.code; return ({too_large:'Die Datei ist zu groß (max. 20 MB).',unsupported_type:'Dieses Dateiformat wird nicht unterstützt – bitte PDF, JPG oder PNG.',invalid_request:'Die Datei ist leer oder beschädigt – bitte neu speichern und erneut hochladen.',not_granted:'Hochladen ist in dieser Ansicht nicht erlaubt – bitte die Seite neu laden und das Hochladen erlauben.',capability_disabled:'Hochladen ist in dieser Ansicht gerade nicht verfügbar – bitte die Seite neu laden.',capability_removed:'Hochladen ist in dieser Ansicht gerade nicht verfügbar – bitte die Seite neu laden.',upstream_auth:'Die Anmeldung ist abgelaufen – bitte die Seite neu laden.',rate_limited:'Gerade zu viele Uploads – bitte kurz warten und erneut versuchen.',quota_or_state:'Der Speicher der Aktion ist voll oder gerade nicht verfügbar.',store_unavailable:'Der Speicher ist kurz nicht erreichbar – bitte erneut versuchen.'})[c]||(String(e&&e.message||'unbekannter Fehler')+(c?' ('+c+')':'')); }
+async function upFile(f){ if(!assets) throw new Error('Hochladen ist für dich noch nicht freigeschaltet.');
+  let {t,ext}=upKind(f);
+  if(!UPOK.has(t)&&(t.startsWith('image/')||/^(heic|heif|tif|tiff|bmp)$/.test(ext))){ const j=await toJpeg(f); if(j){ f=j; t='image/jpeg'; } }
+  if(!UPOK.has(t)){ const er=new Error('Dieses Dateiformat wird nicht unterstützt – bitte PDF, JPG oder PNG.'); er.code='unsupported_type'; throw er; }
+  if(!f.size){ const er=new Error('Die Datei ist leer – bitte neu speichern und erneut hochladen.'); er.code='invalid_request'; throw er; }
+  let last=null; for(let i=0;i<2;i++){ try{ return await assets.upload(f,{type:t}); }catch(e){ last=e; console.error('Upload',e); if(e&&e.code==='store_unavailable'&&i===0){ await new Promise(r=>setTimeout(r,1200)); continue; } break; } }
+  const er=new Error(upErr(last)); er.code=last&&last.code; throw er; }
+async function upBlob(blob,name){ const a=await upFile(new File([blob],name,{type:blob.type})); return {id:a.id,url:a.url,name,type:a.contentType||blob.type}; }
 async function storeSig(sig,v,sigs,tag){ const ps=await upBlob(await (await fetch(sig.png)).blob(),`Unterschrift_${tag}.png`); const S=JSON.parse(JSON.stringify(sigs||{})); S[tag]={n:sig.n,f:sig.f,od:sig.od,ts:sig.ts,by:sig.by,img:ps.url,iid:ps.id};
   const blob=await signedPdf(v,Object.assign({},S,{[tag]:Object.assign({},S[tag],{png:sig.png})})); const done=S.gf&&S.ad;
   const pf=await upBlob(blob,done?'Vertrag digital unterzeichnet.pdf':'Vertrag von Händler:in unterzeichnet.pdf'); S.v=v; return {S,pf}; }
 const QES_URL='https://www.oesterreich.gv.at/de/landingpages/pdf_signatur_services';
-async function qesInfo(file){ if(!(file.type==='application/pdf'||/\.pdf$/i.test(file.name))) throw new Error('Bitte das signierte PDF hochladen (keine Fotos oder Scans).');
+async function qesInfo(file){ if(upKind(file).t!=='application/pdf') throw new Error('Bitte das signierte PDF hochladen (keine Fotos oder Scans).');
   if(file.size>20*1048576) throw new Error('Die Datei ist größer als 20 MB.');
   const u=new Uint8Array(await file.arrayBuffer()); let t=''; for(let i=0;i<u.length;i+=65536) t+=String.fromCharCode.apply(null,u.subarray(i,i+65536));
   const n=(t.match(/\/ByteRange\s*\[/g)||[]).length, names=[...t.matchAll(/\/Type\s*\/Sig\b[\s\S]{0,1500}?\/Name\s*\(([^)]{2,80})\)/g)].map(m=>m[1]);
@@ -1146,8 +1161,8 @@ function aCon(B){ const c=CFG.contract, G=empGroups();
   <label class="f" for="con_note" style="margin-top:14px">Hinweis zum Vertrag (erscheint bei der Registrierung, optional)</label><textarea id="con_note" placeholder="z. B. Bitte Seite 2 ausfüllen, firmenmäßig zeichnen und als PDF oder Foto hochladen.">${esc(CFG.conNote||'')}</textarea><div class="row" style="margin-top:8px"><button class="btn sm" id="con_save" type="button">Hinweis speichern</button></div></div>
   <div class="box"><h3>Verträge der Händler:innen</h3>${G.length?`<div class="tw"><table class="t"><thead><tr><th>Unternehmen</th><th>Kd.-Nr.</th><th>Vertrag</th><th>Status</th><th>Teilnehmer:innen</th></tr></thead><tbody>${G.map(g=>{ const e=EMP[g.k]||{}, con=e.con||g.con, a=adFor(g); return `<tr><td><b>${esc(g.emp)}</b><br><span class="muted small">${esc(g.adr)}</span></td><td>${esc(a.knr||'–')}</td><td>${con?.url?`${conLinks(con)}<br><span class="muted small">${dAT(String(con.ts||'').slice(0,10))}</span>`:'<span style="color:var(--bad);font-weight:700">fehlt</span>'}</td><td>${e.conSt==='ok'?`<span class="st ok">freigegeben ${dAT(String(e.conOk||'').slice(0,10))}</span>`:con?'<span class="st offen">in Prüfung</span>':'<span class="st no">kein Vertrag</span>'}</td><td>${g.sids.length}</td></tr>`; }).join('')}</tbody></table></div>`:'<p class="muted">Noch keine Registrierungen.</p>'}</div>`;
   const f=B.querySelector('#con_file'); if(f) f.onchange=async ev=>{ const file=ev.target.files[0]; ev.target.value=''; if(!file) return; const st=B.querySelector('#con_st');
-    if(!/pdf$/i.test(file.type)&&!/\.pdf$/i.test(file.name)) return st.textContent='Bitte eine PDF-Datei wählen.'; if(file.size>20*1048576) return st.textContent='Die Datei ist größer als 20 MB.';
-    st.textContent='Wird hochgeladen …'; try{ const a=await assets.upload(file); CFG.contract={id:a.id,url:a.url,name:file.name,size:file.size,type:a.contentType,upd:new Date().toISOString()}; CFG.contractFill=null; await saveCfg(); toast('Vertragsvorlage bereitgestellt.'); renderPublic(); aCon(B); }catch(e){ st.textContent='Hochladen nicht möglich: '+(e.message||e.code||'Fehler'); } };
+    if(upKind(file).t!=='application/pdf') return st.textContent='Bitte eine PDF-Datei wählen.'; if(file.size>20*1048576) return st.textContent='Die Datei ist größer als 20 MB.';
+    st.textContent='Wird hochgeladen …'; try{ const a=await upFile(file); CFG.contract={id:a.id,url:a.url,name:file.name,size:file.size,type:a.contentType,upd:new Date().toISOString()}; CFG.contractFill=null; await saveCfg(); toast('Vertragsvorlage bereitgestellt.'); renderPublic(); aCon(B); }catch(e){ st.textContent='Hochladen nicht möglich: '+(e.message||e.code||'Fehler'); } };
   const rm=B.querySelector('#con_rm'); if(rm) rm.onclick=async()=>{ if(!confirm('Vertragsvorlage entfernen? Verkäufer:innen können sie dann nicht mehr herunterladen.')) return; CFG.contract=null; CFG.contractFill=null; try{ await saveCfg(); renderPublic(); aCon(B); }catch(e){} };
   B.querySelector('#con_save').onclick=async()=>{ CFG.conNote=B.querySelector('#con_note').value.trim(); try{ await saveCfg(); toast('Hinweis gespeichert.'); }catch(e){} };
 }
@@ -1159,7 +1174,7 @@ function regCard(x){ const p=x.p, r=p.reg||{}, g={k:empKey(p),emp:p.emp,adr:pAdr
   <table class="t"><tbody><tr><td>Unternehmen</td><td><b>${esc(p.emp)}</b>${p.fil?' · '+esc(p.fil):''}<br><span class="muted small">${esc(g.adr)}</span></td></tr>
   <tr><td>Kundennummer</td><td>${a.knr?`${esc(a.knr)} <span class="muted small">(${esc(a.ksrc)})</span>`:'<span style="color:var(--warn);font-weight:700">fehlt – unter „Arbeitgeber:innen“ wählen</span>'}</td></tr>
   <tr><td>Außendienst</td><td>${a.ad?esc(a.ad):'–'}${a.mail?` · <a href="mailto:${esc(a.mail)}">${esc(a.mail)}</a>`:''}</td></tr>
-  <tr><td>Vertrag</td><td>${con?.url?`${conLinks(con)} · ${dAT(String(con.ts||'').slice(0,10))}`:'<span style="color:var(--bad);font-weight:700">kein Vertrag hochgeladen</span>'}${e.conSt==='ok'?' <span class="st ok">Händlervertrag freigegeben</span>':''}${p.csig?'<br>'+sigLine(p.csig):''}
+  <tr><td>Vertrag</td><td>${con?.url?`${conLinks(con)} · ${dAT(String(con.ts||'').slice(0,10))}`:`<span style="color:var(--bad);font-weight:700">kein Vertrag hochgeladen</span>${assets?`<div class="row" style="margin-top:8px"><label class="btn sm" for="cu_${esc(x.id)}">📄 Unterschriebenen Vertrag hochladen</label><input type="file" id="cu_${esc(x.id)}" data-cu="${esc(x.id)}" accept="application/pdf,.pdf,image/*" multiple hidden></div><span class="muted small">Vertrag per E-Mail oder Post erhalten? Hier als PDF oder Foto hochladen – danach ist die Freigabe möglich.</span>`:''}`}${e.conSt==='ok'?' <span class="st ok">Händlervertrag freigegeben</span>':''}${p.csig?'<br>'+sigLine(p.csig):''}
    ${p.csig?.qes&&!p.csig?.ad?`<div class="row" style="margin-top:8px"><button class="btn sm ghost" type="button" data-dl="${esc(con?.url||'')}" data-dn="${esc(cfFn(p.emp)+'_zum_Gegenzeichnen.pdf')}">⬇ PDF zum Gegenzeichnen</button><a class="btn sm ghost" href="${QES_URL}" target="_blank" rel="noopener">🔐 Signatur-Dienst</a><label class="btn sm tag" for="qa_${esc(x.id)}">📄 Gegengezeichnetes PDF hochladen</label><input type="file" id="qa_${esc(x.id)}" data-qa="${esc(x.id)}" accept="application/pdf" hidden></div><span class="muted small">Mit ID Austria als zweite Signatur in dasselbe PDF signieren und hier hochladen.</span>`:''}
    ${!p.csig?.qes&&!(p.csig?.gf&&p.csig?.ad)&&(!con?.url||p.csig)?`<div class="row" style="margin-top:8px">${!p.csig?.gf?`<button class="btn sm ghost" type="button" data-sg="${esc(x.id)}|gf">✍ Händler:in unterschreibt hier</button>`:''}<button class="btn sm ${p.csig?.gf?'tag':'ghost'}" type="button" data-sg="${esc(x.id)}|ad" ${p.csig?.gf?'':'disabled title="Zuerst unterschreibt die Händler:in"'}>✍ Als Außendienst gegenzeichnen</button></div>`:''}</td></tr></tbody></table><div data-sgb="${esc(x.id)}"></div>
   <div class="row" style="margin-top:10px">${ap(r.sales,'Vertrieb','sales')}${ap(r.acc,'Buchhaltung','acc')}</div>
@@ -1187,8 +1202,14 @@ function aReg(B){
         await saveSeller(id); const e=EMP[k]; if(e&&(e.conSt==='ok'||e.con)){ e.con=p.contract; e.csig=S; await wq('employers/'+k,()=>db.doc('employers/'+k).set(e)); }
         toast(S.gf&&S.ad?'Vertrag vollständig unterzeichnet.':'Unterschrift gespeichert.'); renderAdmin(); } });
     box.scrollIntoView({behavior:'smooth',block:'start'}); });
+  B.querySelectorAll('[data-cu]').forEach(inp=>inp.onchange=async ev=>{ const fs=[...ev.target.files]; ev.target.value=''; if(!fs.length) return; const id=inp.dataset.cu, d=ALL[id]; if(!d?.p) return; const p=d.p, k=empKey(p);
+    const ok=fs.filter(f=>upIsDoc(f)&&f.size<=20*1048576); if(ok.length<fs.length) toast('Nur PDF oder Fotos bis 20 MB – andere Dateien wurden übersprungen.'); if(!ok.length) return;
+    try{ toast('Vertrag wird hochgeladen …'); const files=[]; for(const f of ok){ const a=await upFile(f); files.push({id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Vertrag Seite '+(files.length+1),type:a.contentType,ts:new Date().toISOString()}); }
+      p.contract={...files[0],files,ts:new Date().toISOString(),byAdmin:uid||''}; await saveSeller(id);
+      const e=EMP[k]; if(e&&!e.con){ e.con=p.contract; await wq('employers/'+k,()=>db.doc('employers/'+k).set(e)); }
+      toast('Vertrag hochgeladen – die Registrierung kann jetzt freigegeben werden.'); renderAdmin(); }catch(err){ toast('Hochladen nicht möglich: '+(err.message||err.code||'Fehler')); } });
   B.querySelectorAll('[data-ra]').forEach(b=>b.onclick=async()=>{ const [id,role]=b.dataset.ra.split('|'); const d=ALL[id]; if(!d?.p) return; const p=d.p, k=empKey(p);
-    if(!(p.contract?.url||(EMP[k]||{}).conSt==='ok')) return toast('Ohne hochgeladenen Vertrag ist keine Freigabe möglich.');
+    if(!(p.contract?.url||(EMP[k]||{}).conSt==='ok')) return toast('Bitte zuerst den unterschriebenen Vertrag hochladen (Button „Vertrag hochladen“ in dieser Karte) – danach ist die Freigabe möglich.');
     if(role==='sales'&&p.csig?.gf&&!p.csig?.ad) return toast('Bitte den Vertrag zuerst als Außendienst gegenzeichnen.');
     const r=p.reg=Object.assign({st:'pending'},p.reg||{}); r[role]={ts:new Date().toISOString(),by:uid||''};
     { r.seg=segFor(p); const a0=adFor({k,emp:p.emp,adr:pAdr(p)}); r.ad={n:a0.ad||'',mail:a0.mail||'',tel:a0.ad?((ADMETA?.tels||{})[a0.ad]||''):''}; }
@@ -1536,7 +1557,7 @@ function aKnowEd(B){
   B.querySelectorAll('[data-qx]').forEach(b=>b.onclick=()=>{ read(); KD.q.splice(+b.dataset.qx,1); aKnowEd(B); });
   B.querySelectorAll('[data-vx]').forEach(b=>b.onclick=()=>{ read(); KD.vids.splice(+b.dataset.vx,1); aKnowEd(B); });
   q('#kd_vlink').onclick=()=>{ read(); KD.vids=[...(KD.vids||[]),{kind:'link',url:'',t:''}]; aKnowEd(B); };
-  const vf=q('#kd_vfile'); if(vf) vf.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; read(); const m=q('#kd_vmsg'); if(f.size>20*1024*1024){ m.textContent='Die Datei ist größer als 20 MB.'; return; } m.textContent='Video wird hochgeladen …'; try{ const a=await assets.upload(f); KD.vids=[...(KD.vids||[]),{kind:'file',id:a.id,url:a.url,t:f.name.replace(/\.[^.]+$/,'')}]; aKnowEd(B); }catch(err){ m.textContent='Hochladen nicht möglich: '+(err.message||err.code||'Fehler'); } };
+  const vf=q('#kd_vfile'); if(vf) vf.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; read(); const m=q('#kd_vmsg'); if(f.size>20*1024*1024){ m.textContent='Die Datei ist größer als 20 MB.'; return; } m.textContent='Video wird hochgeladen …'; try{ const a=await upFile(f); KD.vids=[...(KD.vids||[]),{kind:'file',id:a.id,url:a.url,t:f.name.replace(/\.[^.]+$/,'')}]; aKnowEd(B); }catch(err){ m.textContent='Hochladen nicht möglich: '+(err.message||err.code||'Fehler'); } };
   const ai=q('#kd_ai'); if(ai) ai.onclick=async()=>{ read(); const m=q('#kd_aimsg'); ai.disabled=true; m.textContent='Entwurf wird erstellt …';
     try{ const r=await sample.json(kPrompt(aKey,KD.src||''),{modelTier:'default'}); KD.intro=String(r.intro||''); KD.args=(Array.isArray(r.args)?r.args:[]).map(String).slice(0,8); KD.q=(Array.isArray(r.q)?r.q:[]).filter(x=>x&&x.q&&Array.isArray(x.a)).slice(0,10).map(x=>({q:String(x.q),a:x.a.slice(0,4).map(String),ok:Math.min(3,Math.max(0,+x.ok||0)),why:String(x.why||'')})); KD.st='draft'; aKnowEd(B); q('#kd_msg').innerHTML='<div class="msg inf">Entwurf erstellt – bitte fachlich prüfen und anpassen, dann freigeben.</div>'; }
     catch(e){ m.textContent=e?.code==='rate_limited'?'Gerade zu viele Anfragen – bitte später erneut versuchen.':e?.code==='not_granted'?'KI ist für diese Ansicht nicht freigegeben.':'Entwurf konnte nicht erstellt werden.'; ai.disabled=false; } };
