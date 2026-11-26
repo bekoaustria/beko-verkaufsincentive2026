@@ -1129,7 +1129,8 @@ async function qesInfo(file){ if(upKind(file).t!=='application/pdf') throw new E
   const n=(t.match(/\/ByteRange\s*\[/g)||[]).length, names=[...t.matchAll(/\/Type\s*\/Sig\b[\s\S]{0,1500}?\/Name\s*\(([^)]{2,80})\)/g)].map(m=>m[1]);
   return {n,names}; }
 const sigTxt=g=>g.qes?`${g.n?esc(g.n)+' · ':''}ID Austria (qualifiziert)`:esc(g.n);
-const sigLine=c=>c?.gf?`<span class="st ok">✓ Händler:in: ${sigTxt(c.gf)} · ${dAT(String(c.gf.ts).slice(0,10))}</span> ${c.ad?`<span class="st ok">✓ Außendienst: ${sigTxt(c.ad)} · ${dAT(String(c.ad.ts).slice(0,10))}</span>`:'<span class="st offen">Gegenzeichnung Außendienst ausstehend</span>'}`:'';
+const sigAd=c=>c?.ad?`<span class="st ok">✓ ${esc(c.ad.f||'Außendienst')}: ${sigTxt(c.ad)} · ${dAT(String(c.ad.ts).slice(0,10))}</span>`:'';
+const sigLine=c=>c?.gf?`<span class="st ok">✓ Händler:in: ${sigTxt(c.gf)} · ${dAT(String(c.gf.ts).slice(0,10))}</span> ${c.ad?sigAd(c):'<span class="st offen">Gegenzeichnung Außendienst ausstehend</span>'}`:sigAd(c);
 /* ---------- Vertrag & Freigabe ---------- */
 let PCON=null;
 const conFiles=c=>c?.files?.length?c.files:(c?.url?[c]:[]);
@@ -1166,6 +1167,46 @@ function aCon(B){ const c=CFG.contract, G=empGroups();
   const rm=B.querySelector('#con_rm'); if(rm) rm.onclick=async()=>{ if(!confirm('Vertragsvorlage entfernen? Verkäufer:innen können sie dann nicht mehr herunterladen.')) return; CFG.contract=null; CFG.contractFill=null; try{ await saveCfg(); renderPublic(); aCon(B); }catch(e){} };
   B.querySelector('#con_save').onclick=async()=>{ CFG.conNote=B.querySelector('#con_note').value.trim(); try{ await saveCfg(); toast('Hinweis gespeichert.'); }catch(e){} };
 }
+/* ---------- ID Austria: Gegenzeichnung durch Sales Director / Außendienst ---------- */
+function qesCount(u){ let t=''; for(let i=0;i<u.length;i+=65536) t+=String.fromCharCode.apply(null,u.subarray(i,i+65536)); return (t.match(/\/ByteRange\s*\[/g)||[]).length; }
+async function conPdf(con){ const fs=conFiles(con); if(!fs.length) throw new Error('Es liegt kein Vertrag vor.');
+  const bins=[]; for(const f of fs){ const r=await fetch(f.url); if(!r.ok) throw new Error('Der Vertrag konnte nicht geladen werden.'); bins.push({f,u:new Uint8Array(await r.arrayBuffer()),type:r.headers.get('Content-Type')||f.type||''}); }
+  const isPdf=b=>b.u[0]===0x25&&b.u[1]===0x50&&b.u[2]===0x44&&b.u[3]===0x46;
+  if(bins.length===1&&isPdf(bins[0])) return {blob:new Blob([bins[0].u],{type:'application/pdf'}),base:qesCount(bins[0].u)};
+  if(bins.some(b=>isPdf(b)&&qesCount(b.u)>0)) throw new Error('Der Vertrag besteht aus mehreren Dateien und enthält bereits eine elektronische Signatur – bitte die Händler:in um ein einzelnes signiertes PDF bitten.');
+  try{ await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'); }catch(e){ throw new Error('PDF-Werkzeug konnte nicht geladen werden.'); }
+  const {PDFDocument}=PDFLib, doc=await PDFDocument.create();
+  for(const b of bins){
+    if(isPdf(b)){ const src=await PDFDocument.load(b.u,{ignoreEncryption:true}); (await doc.copyPages(src,src.getPageIndices())).forEach(pg=>doc.addPage(pg)); continue; }
+    let u=b.u, png=b.u[0]===0x89&&b.u[1]===0x50;
+    if(!png&&!(b.u[0]===0xFF&&b.u[1]===0xD8)){ const j=await toJpeg(new Blob([b.u],{type:b.type})); if(!j) throw new Error('Ein Foto des Vertrags kann nicht verarbeitet werden.'); u=new Uint8Array(await j.arrayBuffer()); }
+    const img=png?await doc.embedPng(u):await doc.embedJpg(u); const W=595.28,H=841.89,M=24, sc=Math.min((W-2*M)/img.width,(H-2*M)/img.height);
+    const pg=doc.addPage([W,H]); pg.drawImage(img,{x:(W-img.width*sc)/2,y:(H-img.height*sc)/2,width:img.width*sc,height:img.height*sc}); }
+  return {blob:new Blob([await doc.save()],{type:'application/pdf'}),base:0}; }
+function qesPanel(B,box,id){ const d=ALL[id]; if(!d?.p) return; const p=d.p, k=empKey(p), e=EMP[k]||{}, a=adFor({k,emp:p.emp,adr:pAdr(p)}), con=p.contract?.url?p.contract:e.con;
+  let base=null; const fn=cfFn(p.emp)+'_zum_Unterschreiben.pdf';
+  box.innerHTML=`<div class="box" style="margin-top:10px;border:2px solid var(--navy,#001C86)"><h3 style="margin-top:0">🔐 Mit ID Austria unterschreiben</h3>
+  <div class="row" style="gap:10px;align-items:flex-end"><div><label class="f" for="qr_${esc(id)}">Unterschrift als</label><select id="qr_${esc(id)}" data-qr><option value="Sales Director">Sales Director</option><option value="Außendienst">Außendienst</option></select></div>
+  <div style="flex:1;min-width:200px"><label class="f" for="qn_${esc(id)}">Name (optional – sonst aus der Signatur)</label><input id="qn_${esc(id)}" data-qn placeholder="z. B. Vor- und Nachname"></div></div>
+  <p class="small" style="margin:12px 0 6px"><b>So geht's:</b> 1. PDF herunterladen · 2. beim Signatur-Dienst mit ID Austria signieren (Handy-App „Digitales Amt“ bzw. ID-Austria-App) · 3. das signierte PDF hier hochladen.${p.csig?.qes?' Die Signatur der Händler:in bleibt dabei erhalten – bitte in <b>dasselbe</b> PDF signieren.':''}</p>
+  <div class="row"><button class="btn sm ghost" type="button" data-qd>⬇ 1 · PDF zum Unterschreiben</button><a class="btn sm ghost" href="${QES_URL}" target="_blank" rel="noopener">🔐 2 · Signatur-Dienst öffnen</a><label class="btn sm" for="qu_${esc(id)}">📄 3 · Signiertes PDF hochladen</label><input type="file" id="qu_${esc(id)}" data-qu accept="application/pdf,.pdf" hidden><button class="btn sm ghost" type="button" data-qx>Abbrechen</button></div>
+  <div data-qm class="muted small" style="margin-top:8px" aria-live="polite"></div></div>`;
+  const q=s=>box.querySelector(s), msg=(t,c)=>{ q('[data-qm]').innerHTML=c?`<div class="msg ${c}">${t}</div>`:t; };
+  const role=q('[data-qr]'); role.value=a.ad?'Außendienst':'Sales Director'; const nm=q('[data-qn]'); if(a.ad) nm.value=a.ad;
+  role.onchange=()=>{ nm.value=role.value==='Außendienst'?(a.ad||''):''; };
+  const prep=async()=>{ const r=await conPdf(con); base=r.base; return r; };
+  q('[data-qx]').onclick=()=>{ box.innerHTML=''; };
+  q('[data-qd]').onclick=async ev=>{ ev.target.disabled=true; msg('<span class="spin"></span> PDF wird vorbereitet …','inf'); try{ const r=await prep(); await openBlob(r.blob,fn); msg(`PDF gespeichert (${esc(fn)}). Jetzt beim Signatur-Dienst mit ID Austria signieren und das Ergebnis unter Schritt 3 hochladen.`,'ok'); }catch(e){ msg(esc(e.message||'Das PDF konnte nicht erstellt werden.'),'err'); } ev.target.disabled=false; };
+  q('[data-qu]').onchange=async ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(!f) return;
+    try{ msg('<span class="spin"></span> Signatur wird geprüft …','inf'); if(base===null) await prep(); const info=await qesInfo(f);
+      if(info.n<=base) return msg(info.n?`Im PDF sind nur ${info.n} Signatur(en) – die neue ID-Austria-Signatur fehlt noch. Bitte das <b>signierte</b> PDF hochladen.`:'In diesem PDF wurde keine elektronische Signatur gefunden. Bitte das mit ID Austria signierte PDF hochladen – nicht ausgedruckt oder gescannt.','err');
+      msg('<span class="spin"></span> Wird hochgeladen …','inf'); const lab=role.value, pf=await upBlob(f,`Vertrag mit ID Austria signiert (${lab}).pdf`);
+      const ad={qes:1,n:nm.value.trim()||info.names[info.names.length-1]||'',f:lab,ts:new Date().toISOString(),by:uid||'',sigs:info.n};
+      p.csig=Object.assign({},p.csig||{},{ad}); p.contract={...pf,files:[pf],ts:new Date().toISOString(),prev:conFiles(con).map(x=>({id:x.id,url:x.url,name:x.name}))};
+      await saveSeller(id); const E=EMP[k]; if(E&&(E.conSt==='ok'||E.con)){ E.con=p.contract; E.csig=p.csig; await wq('employers/'+k,()=>db.doc('employers/'+k).set(E)); }
+      toast(`Vertrag mit ID Austria als ${lab} unterschrieben.`); renderAdmin(); }
+    catch(err){ msg(esc(err.message||'Hochladen nicht möglich.'),'err'); } };
+  box.scrollIntoView({behavior:'smooth',block:'start'}); }
 let aRegF='pending';
 function regCard(x){ const p=x.p, r=p.reg||{}, g={k:empKey(p),emp:p.emp,adr:pAdr(p)}, e=EMP[g.k]||{}, a=adFor(g), con=p.contract||e.con;
   const ap=(o,lbl,role)=>o?.ts?`<span class="st ok">✓ ${lbl} · ${dAT(o.ts.slice(0,10))}</span>`:(x.st==='pending'?`<button class="btn sm" type="button" data-ra="${esc(x.id)}|${role}">${lbl} freigeben</button>`:`<span class="muted small">${lbl}: –</span>`);
@@ -1175,7 +1216,7 @@ function regCard(x){ const p=x.p, r=p.reg||{}, g={k:empKey(p),emp:p.emp,adr:pAdr
   <tr><td>Kundennummer</td><td>${a.knr?`${esc(a.knr)} <span class="muted small">(${esc(a.ksrc)})</span>`:'<span style="color:var(--warn);font-weight:700">fehlt – unter „Arbeitgeber:innen“ wählen</span>'}</td></tr>
   <tr><td>Außendienst</td><td>${a.ad?esc(a.ad):'–'}${a.mail?` · <a href="mailto:${esc(a.mail)}">${esc(a.mail)}</a>`:''}</td></tr>
   <tr><td>Vertrag</td><td>${con?.url?`${conLinks(con)} · ${dAT(String(con.ts||'').slice(0,10))}`:`<span style="color:var(--bad);font-weight:700">kein Vertrag hochgeladen</span>${assets?`<div class="row" style="margin-top:8px"><label class="btn sm" for="cu_${esc(x.id)}">📄 Unterschriebenen Vertrag hochladen</label><input type="file" id="cu_${esc(x.id)}" data-cu="${esc(x.id)}" accept="application/pdf,.pdf,image/*" multiple hidden></div><span class="muted small">Vertrag per E-Mail oder Post erhalten? Hier als PDF oder Foto hochladen – danach ist die Freigabe möglich.</span>`:''}`}${e.conSt==='ok'?' <span class="st ok">Händlervertrag freigegeben</span>':''}${p.csig?'<br>'+sigLine(p.csig):''}
-   ${p.csig?.qes&&!p.csig?.ad?`<div class="row" style="margin-top:8px"><button class="btn sm ghost" type="button" data-dl="${esc(con?.url||'')}" data-dn="${esc(cfFn(p.emp)+'_zum_Gegenzeichnen.pdf')}">⬇ PDF zum Gegenzeichnen</button><a class="btn sm ghost" href="${QES_URL}" target="_blank" rel="noopener">🔐 Signatur-Dienst</a><label class="btn sm tag" for="qa_${esc(x.id)}">📄 Gegengezeichnetes PDF hochladen</label><input type="file" id="qa_${esc(x.id)}" data-qa="${esc(x.id)}" accept="application/pdf" hidden></div><span class="muted small">Mit ID Austria als zweite Signatur in dasselbe PDF signieren und hier hochladen.</span>`:''}
+   ${con?.url&&!p.csig?.ad&&assets?`<div class="row" style="margin-top:8px"><button class="btn sm tag" type="button" data-qid="${esc(x.id)}">🔐 Mit ID Austria unterschreiben (Sales Director / Außendienst)</button></div>${p.csig?.qes?'<span class="muted small">Die Händler:in hat mit ID Austria signiert – bitte als zweite Signatur in dasselbe PDF signieren.</span>':''}`:''}
    ${!p.csig?.qes&&!(p.csig?.gf&&p.csig?.ad)&&(!con?.url||p.csig)?`<div class="row" style="margin-top:8px">${!p.csig?.gf?`<button class="btn sm ghost" type="button" data-sg="${esc(x.id)}|gf">✍ Händler:in unterschreibt hier</button>`:''}<button class="btn sm ${p.csig?.gf?'tag':'ghost'}" type="button" data-sg="${esc(x.id)}|ad" ${p.csig?.gf?'':'disabled title="Zuerst unterschreibt die Händler:in"'}>✍ Als Außendienst gegenzeichnen</button></div>`:''}</td></tr></tbody></table><div data-sgb="${esc(x.id)}"></div>
   <div class="row" style="margin-top:10px">${ap(r.sales,'Vertrieb','sales')}${ap(r.acc,'Buchhaltung','acc')}</div>
   ${x.st==='no'?`<p class="small" style="color:var(--bad);margin-bottom:0">Abgelehnt am ${dAT(String(r.noTs||'').slice(0,10))}: ${esc(r.reason||'')}</p>`:x.st==='pending'?`<div class="row" style="margin-top:8px"><button class="btn sm ghost" type="button" data-rm="${esc(x.id)}">Freigabe per E-Mail anfordern</button><input data-rr="${esc(x.id)}" placeholder="Grund bei Ablehnung" style="max-width:260px" aria-label="Grund bei Ablehnung"><button class="btn sm ghost" type="button" data-rn="${esc(x.id)}">Ablehnen</button></div>`:''}</div>`; }
@@ -1202,6 +1243,7 @@ function aReg(B){
         await saveSeller(id); const e=EMP[k]; if(e&&(e.conSt==='ok'||e.con)){ e.con=p.contract; e.csig=S; await wq('employers/'+k,()=>db.doc('employers/'+k).set(e)); }
         toast(S.gf&&S.ad?'Vertrag vollständig unterzeichnet.':'Unterschrift gespeichert.'); renderAdmin(); } });
     box.scrollIntoView({behavior:'smooth',block:'start'}); });
+  B.querySelectorAll('[data-qid]').forEach(b=>b.onclick=()=>{ const id=b.dataset.qid, box=B.querySelector(`[data-sgb="${CSS.escape(id)}"]`); B.querySelectorAll('[data-sgb]').forEach(x=>{ if(x!==box) x.innerHTML=''; }); qesPanel(B,box,id); });
   B.querySelectorAll('[data-cu]').forEach(inp=>inp.onchange=async ev=>{ const fs=[...ev.target.files]; ev.target.value=''; if(!fs.length) return; const id=inp.dataset.cu, d=ALL[id]; if(!d?.p) return; const p=d.p, k=empKey(p);
     const ok=fs.filter(f=>upIsDoc(f)&&f.size<=20*1048576); if(ok.length<fs.length) toast('Nur PDF oder Fotos bis 20 MB – andere Dateien wurden übersprungen.'); if(!ok.length) return;
     try{ toast('Vertrag wird hochgeladen …'); const files=[]; for(const f of ok){ const a=await upFile(f); files.push({id:a.id,url:a.url,name:f.name&&f.name!=='image.jpg'?f.name:'Vertrag Seite '+(files.length+1),type:a.contentType,ts:new Date().toISOString()}); }
